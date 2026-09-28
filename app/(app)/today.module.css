@@ -1,0 +1,28 @@
+.briefing {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 880px;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 22px;
+}
+.briefing p {
+  margin: 0;
+}
+.briefing strong {
+  color: var(--text-1);
+  font-weight: 500;
+}
+.briefingGlyph {
+  flex: none;
+  margin-top: 4px;
+  color: var(--optic-ink);
+}
+
+@media (max-width: 760px) {
+  .briefing {
+    font-size: 13px;
+    line-height: 20px;
+  }
+}

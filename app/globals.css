@@ -1,26 +1,225 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════
+   Night Session — global design tokens (DESIGN_SYSTEM.md §1–§8)
+   Night is the default; Day is set with <html data-theme="light">.
+   Components use semantic tokens only — never raw hex.
+   ═══════════════════════════════════════════════════════════════ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --canvas: #0a0c0b;
+  --surface-1: #111413;
+  --surface-2: #171b19;
+  --surface-3: #1e2320;
+  --line-subtle: #202624;
+  --line: #2c3330;
+  --line-strong: #3d4541;
+  --text-1: #eceeec;
+  --text-2: #a3aba6;
+  --text-3: #6b736e;
+  --text-disabled: #474e4a;
+  --optic: #d7ff3f;
+  --optic-ink: #d7ff3f;
+  --optic-soft: rgb(215 255 63 / 0.1);
+  --optic-wash: rgb(215 255 63 / 0.035);
+  --optic-line: rgb(215 255 63 / 0.38);
+  --on-optic: #0a0c0b;
+  --focus: #d7ff3f;
+  --live: #3dd68c;
+  --live-soft: rgb(61 214 140 / 0.12);
+  --warn: #f5b544;
+  --warn-soft: rgb(245 181 68 / 0.12);
+  --risk: #ff5d5d;
+  --risk-soft: rgb(255 93 93 / 0.12);
+  --info: #5cc8e0;
+  --info-soft: rgb(92 200 224 / 0.12);
+  --scrim: rgb(4 5 5 / 0.62);
+  --overlay-shadow: 0 16px 48px rgb(0 0 0 / 0.5);
+  --shimmer: rgb(255 255 255 / 0.04);
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --t-instant: 80ms;
+  --t-fast: 140ms;
+  --t-base: 200ms;
+
+  /* Shell metrics */
+  --rail-w: 56px;
+  --topbar-h: 44px;
+  --dock-w: 380px;
+  --mobile-bar-h: 56px;
+
+  /* Safe areas (PWA standalone / notched devices) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  color-scheme: dark;
 }
 
+:root[data-theme="light"] {
+  --canvas: #f3f3ef;
+  --surface-1: #ffffff;
+  --surface-2: #edede8;
+  --surface-3: #e4e4de;
+  --line-subtle: #e6e6e0;
+  --line: #d3d3cc;
+  --line-strong: #b5b5ad;
+  --text-1: #0e100f;
+  --text-2: #4f5551;
+  --text-3: #80867f;
+  --text-disabled: #b3b8b3;
+  --optic: #d7ff3f;
+  --optic-ink: #4a6700;
+  --optic-soft: rgb(160 200 0 / 0.14);
+  --optic-wash: rgb(160 200 0 / 0.06);
+  --optic-line: rgb(90 125 0 / 0.4);
+  --on-optic: #0a0c0b;
+  --focus: #4a6700;
+  --live: #12844f;
+  --live-soft: rgb(18 132 79 / 0.1);
+  --warn: #a86400;
+  --warn-soft: rgb(214 140 20 / 0.13);
+  --risk: #c42b2b;
+  --risk-soft: rgb(196 43 43 / 0.09);
+  --info: #0f6f85;
+  --info-soft: rgb(15 111 133 / 0.09);
+  --scrim: rgb(14 16 15 / 0.28);
+  --overlay-shadow: 0 12px 32px rgb(20 24 22 / 0.14), 0 1px 2px rgb(20 24 22 / 0.06);
+  --shimmer: rgb(255 255 255 / 0.6);
+
+  color-scheme: light;
+}
+
+/* Tailwind: expose tokens as utilities (bg-surface-1, text-fg-2, border-line,
+   text-body, rounded-1, font-mono …). The default Tailwind palette is removed
+   so screens can only use the design system's colors. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-*: initial;
+  --color-canvas: var(--canvas);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line-subtle: var(--line-subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg-1: var(--text-1);
+  --color-fg-2: var(--text-2);
+  --color-fg-3: var(--text-3);
+  --color-fg-disabled: var(--text-disabled);
+  --color-optic: var(--optic);
+  --color-optic-ink: var(--optic-ink);
+  --color-optic-soft: var(--optic-soft);
+  --color-optic-wash: var(--optic-wash);
+  --color-on-optic: var(--on-optic);
+  --color-live: var(--live);
+  --color-live-soft: var(--live-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-risk: var(--risk);
+  --color-risk-soft: var(--risk-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --font-sans: var(--font-plex-hebrew), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  --text-micro: 11px;
+  --text-micro--line-height: 16px;
+  --text-meta: 12px;
+  --text-meta--line-height: 16px;
+  --text-body: 13px;
+  --text-body--line-height: 20px;
+  --text-read: 14px;
+  --text-read--line-height: 22px;
+  --text-title: 16px;
+  --text-title--line-height: 24px;
+  --text-page: 20px;
+  --text-page--line-height: 28px;
+  --text-metric: 28px;
+  --text-metric--line-height: 32px;
+  --text-display: 40px;
+  --text-display--line-height: 44px;
+
+  --radius-1: 4px;
+  --radius-2: 6px;
+  --radius-3: 10px;
+
+  --shadow-overlay: var(--overlay-shadow);
+  --ease-ns: var(--ease);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ───────── Base ───────── */
+
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text-1);
+  font-family: var(--font-plex-hebrew), system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+  /* App-like: no rubber-band scroll of the whole page in standalone mode */
+  overscroll-behavior: none;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: var(--optic);
+  color: var(--on-optic);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+/* ───────── RTL / LTR utilities (DESIGN_SYSTEM.md §18) ─────────
+   Numbers, prices, percentages, dates, phones and IDs: <Num> (components/ui/text.tsx)
+   renders <bdi dir="ltr" class="num">. Emails/URLs: <Ltr> renders class="ltr". */
+
+.num {
+  unicode-bidi: isolate;
+  direction: ltr;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.93em;
+  letter-spacing: -0.01em;
+}
+
+.ltr {
+  unicode-bidi: isolate;
+  direction: ltr;
+}
+
+/* Directional icons (arrows, chevrons, send) flip in RTL */
+[dir="rtl"] .mirror {
+  transform: scaleX(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }
