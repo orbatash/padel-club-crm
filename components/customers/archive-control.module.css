@@ -1,0 +1,46 @@
+.dialog {
+  width: min(440px, calc(100vw - 32px));
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-1);
+  color: var(--text-1);
+  box-shadow: var(--overlay-shadow);
+}
+.dialog::backdrop {
+  background: var(--scrim);
+}
+.dialog[open] {
+  animation: pop var(--t-fast) var(--ease) both;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+}
+.title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.text {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 20px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
