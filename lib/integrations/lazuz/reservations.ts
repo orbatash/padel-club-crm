@@ -2,7 +2,7 @@ import 'server-only'
 
 import { IntegrationError } from '@/lib/integrations/core/errors'
 import { logEvent } from '@/lib/integrations/core/log'
-import { getLazuzClient } from './client'
+import { getLazuzClient, type LazuzClient } from './client'
 import { getLazuzConfig } from './config'
 import { expandOccurrences, isWallDate, isWallTime } from './time'
 
@@ -243,9 +243,12 @@ export function summarizeReservations(result: ReservationsResult, windowStart: s
  * club-local `YYYY-MM-DD`; LAZUZ returns any reservation (including recurring
  * series) that overlaps the range, with the end date inclusive.
  */
-export async function listReservations({ start, end }: { start: string; end: string }): Promise<ReservationsResult> {
-  const config = getLazuzConfig()
-  if (!config.clubId) {
+export async function listReservations(
+  { start, end }: { start: string; end: string },
+  deps: { client?: LazuzClient; clubId?: string } = {}
+): Promise<ReservationsResult> {
+  const clubId = deps.clubId ?? getLazuzConfig().clubId
+  if (!clubId) {
     throw new IntegrationError('not_configured', 'LAZUZ_CLUB_ID is not set', {
       provider: 'lazuz',
       operation: 'listReservations',
@@ -258,11 +261,11 @@ export async function listReservations({ start, end }: { start: string; end: str
     })
   }
 
-  const body = await getLazuzClient().request({
+  const body = await (deps.client ?? getLazuzClient()).request({
     operation: 'listReservations',
     method: 'GET',
     path: '/reservations',
-    query: { club_id: config.clubId, start, end },
+    query: { club_id: clubId, start, end },
   })
 
   const result = parseReservations(body)
