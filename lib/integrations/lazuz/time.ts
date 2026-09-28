@@ -92,20 +92,40 @@ export type OccurrenceSource = {
   endTime: string
   isRecurring: boolean | null
   recurrenceDayOfWeek: number | null
+  /** true when LAZUZ marks the reservation cancelled (canceled = 1). */
+  canceled: boolean | null
 }
 
 /**
- * Expands a LAZUZ reservation into concrete occurrences within
+ * Expands a LAZUZ reservation into concrete, ACTIVE occupancy intervals within
  * [windowStart, windowEnd] (inclusive club-local dates).
  *
+ * - Cancelled reservations (canceled = 1) produce no occurrences. They remain
+ *   valid source records; they just don't occupy a court.
  * - Single reservation: one occurrence from start date+time to end date+time
  *   (overnight bookings end on the next date).
  * - Recurring series (is_recurring "1" + day_of_week): start_date..end_date is
  *   the series range and start_time..end_time the weekly slot; one occurrence
- *   per matching weekday. PROVISIONAL: how LAZUZ represents skipped or edited
- *   single occurrences of a series is not confirmed yet.
+ *   per date in that range whose weekday equals day_of_week. LAZUZ returns a
+ *   series whenever its range overlaps the request, regardless of weekday, so
+ *   the weekday filter here is required.
+ *
+ * Series exceptions: LAZUZ has no per-occurrence exception records. When one
+ * occurrence is removed the series is split (the LAZUZ UI does this, and the
+ * old club system mirrored it):
+ * - first occurrence removed  → the series' start_date moves forward 7 days
+ * - last occurrence removed   → the reservation is cancelled (canceled = 1)
+ * - middle occurrence removed → the original series ends the day before, and a
+ *   new series continues from date + 7 with parentResId = the original id.
+ *   The removed date is simply a gap between the two series.
+ * - an edited single occurrence = that split plus a separate one-off booking
+ *   for the edited date.
+ * Expanding each record independently is therefore correct and does not
+ * double-count.
  */
 export function expandOccurrences(r: OccurrenceSource, windowStart: string, windowEnd: string): Occurrence[] {
+  if (r.canceled === true) return []
+
   const recurring = r.isRecurring === true && r.recurrenceDayOfWeek !== null
 
   if (!recurring) {

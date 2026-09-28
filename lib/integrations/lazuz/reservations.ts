@@ -19,8 +19,17 @@ import { expandOccurrences, isWallDate, isWallTime } from './time'
 // - booking_type "na":  no client fields, price 0, often recurring → blocked
 //   (provisional: treated as occupancy until LAZUZ confirms the meaning)
 // - is_recurring "1" + day_of_week: start_date..end_date is the SERIES range
-//   and start_time..end_time the weekly slot (see time.ts expandOccurrences)
+//   and start_time..end_time the weekly slot; occurrences are the dates in
+//   that range matching day_of_week (see time.ts expandOccurrences)
+// - parentResId: continuation link. When a recurring series is split (an
+//   occurrence removed or edited), the continuation series points to the
+//   original reservation id. A removed middle occurrence is a gap between the
+//   split series; an edited occurrence is a separate one-off booking.
+// - canceled = 1: cancelled. Cancelled records are kept as source records but
+//   produce no court occupancy.
 // - dates/times are club wall-clock (Asia/Jerusalem); created_date is ISO UTC
+// - courts (GET /club-management/courts/213?hierarchical=true): 1294…1301 are
+//   top-level padel courts titled "מגרש 1"…"מגרש 8"
 
 export type OccupancyType = 'customer_booking' | 'internal_booking' | 'blocked' | 'unknown'
 
@@ -50,7 +59,7 @@ export type LazuzReservation = {
   bookingType: string
   occupancyType: OccupancyType
   status: string | null
-  /** null = LAZUZ didn't say (observed as null on all records so far). */
+  /** true when canceled = 1. Cancelled records are kept but produce no occupancy. null = not set. */
   canceled: boolean | null
   canceledReason: string | null
   price: number | null
@@ -60,7 +69,10 @@ export type LazuzReservation = {
   isRecurring: boolean | null
   /** 0 = Sunday … 6 = Saturday; set on recurring series. */
   recurrenceDayOfWeek: number | null
-  /** Set on some recurring records; the parent is not included in responses. */
+  /**
+   * parentResId: this series continues an earlier series that was split. The
+   * parent usually ended before the requested range, so it isn't returned.
+   */
   parentExternalId: string | null
   classId: string | null
   eventDescription: string | null
@@ -166,33 +178,46 @@ export function parseReservations(body: unknown): ReservationsResult {
 
 /**
  * Personal-data-free summary for diagnostics: counts by booking type and
- * court, and concrete occurrences inside the window (recurring series
- * expanded).
+ * court (cancelled reported separately), and ACTIVE occurrences inside the
+ * window (recurring series expanded, cancelled records excluded).
  */
 export function summarizeReservations(result: ReservationsResult, windowStart: string, windowEnd: string) {
-  const byBookingType: Record<
-    string,
-    { count: number; occupancyType: OccupancyType; withClient: number; recurringSeries: number; occurrencesInWindow: number }
-  > = {}
-  const byCourt: Record<string, { records: number; occurrencesInWindow: number }> = {}
+  type TypeSummary = {
+    count: number
+    cancelled: number
+    occupancyType: OccupancyType
+    withClient: number
+    recurringSeries: number
+    /** Active (non-cancelled) occurrences inside the window. */
+    occurrencesInWindow: number
+  }
+  const byBookingType: Record<string, TypeSummary> = {}
+  const byCourt: Record<string, { records: number; cancelled: number; occurrencesInWindow: number }> = {}
   const statuses: Record<string, number> = {}
+  let cancelled = 0
 
   for (const r of result.reservations) {
     const occurrences = expandOccurrences(r, windowStart, windowEnd).length
+    const isCancelled = r.canceled === true
+    if (isCancelled) cancelled++
+
     const t = (byBookingType[r.bookingType] ??= {
       count: 0,
+      cancelled: 0,
       occupancyType: r.occupancyType,
       withClient: 0,
       recurringSeries: 0,
       occurrencesInWindow: 0,
     })
     t.count++
+    if (isCancelled) t.cancelled++
     if (r.clientExternalId) t.withClient++
     if (r.isRecurring && r.recurrenceDayOfWeek !== null) t.recurringSeries++
     t.occurrencesInWindow += occurrences
 
-    const c = (byCourt[r.courtExternalId] ??= { records: 0, occurrencesInWindow: 0 })
+    const c = (byCourt[r.courtExternalId] ??= { records: 0, cancelled: 0, occurrencesInWindow: 0 })
     c.records++
+    if (isCancelled) c.cancelled++
     c.occurrencesInWindow += occurrences
 
     const s = `${r.bookingType}:${r.status ?? 'null'}`
@@ -201,6 +226,9 @@ export function summarizeReservations(result: ReservationsResult, windowStart: s
 
   return {
     total: result.reservations.length,
+    /** Cancelled source records (kept, but excluded from occurrences). */
+    cancelled,
+    active: result.reservations.length - cancelled,
     skipped: result.skipped,
     skippedReasons: result.skippedReasons,
     byBookingType,
