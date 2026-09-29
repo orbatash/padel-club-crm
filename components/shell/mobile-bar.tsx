@@ -30,7 +30,7 @@ export function MobileBar({
             aria-current={active ? 'page' : undefined}
           >
             <Icon size={20} />
-            {item.label}
+            {item.mobileLabel ?? item.label}
           </Link>
         )
       })}

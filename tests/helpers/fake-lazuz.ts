@@ -107,6 +107,7 @@ export function fakeConfig(overrides: Partial<LazuzConfig> = {}): LazuzConfig {
     fallbackTokenTtlMs: 15 * 60_000,
     refreshMarginMs: 90_000,
     requestTimeoutMs: 1000,
+    autoCreateCustomers: false,
     ...overrides,
   }
 }

@@ -9,6 +9,7 @@ export type MatchStatus =
   | 'matched_client_id'
   | 'matched_phone'
   | 'manual'
+  | 'auto_created'
   | 'ambiguous'
   | 'unmatched'
   | 'not_applicable'
@@ -73,7 +74,21 @@ export type ExistingReservation = Omit<ReservationUpsert, 'last_seen_at' | 'sync
   sync_state: 'present' | 'missing'
 }
 
-export type IdentityInsert = { provider: 'lazuz'; external_id: string; customer_id: string; matched_by: 'phone' }
+export type IdentityInsert = {
+  provider: 'lazuz'
+  external_id: string
+  customer_id: string
+  matched_by: 'phone' | 'auto_created'
+}
+
+/** A CRM customer the sync creates. Only these columns are written. */
+export type CustomerInsert = {
+  full_name: string | null
+  phone: string
+  email: string | null
+  source: 'lazuz'
+  status: 'active'
+}
 
 export type OccupancyRow = { id: string; reservation_id: string; starts_at: string; ends_at: string }
 
@@ -114,6 +129,8 @@ export interface SyncStore {
   /** Non-archived customers with one of these E.164 phones. Read-only on customers. */
   loadActiveCustomersByPhones(phones: string[]): Promise<{ id: string; phone: string }[]>
   insertIdentities(rows: IdentityInsert[]): Promise<void>
+  /** Inserts new CRM customers; returns their ids and phones. Never updates existing rows. */
+  insertCustomers(rows: CustomerInsert[]): Promise<{ id: string; phone: string }[]>
 
   /** Occupancies whose local_date is inside the window. */
   loadOccupancies(window: SyncWindow): Promise<OccupancyRow[]>

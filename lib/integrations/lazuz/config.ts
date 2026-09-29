@@ -18,6 +18,12 @@ export type LazuzConfig = {
   /** Refresh this long before the token expires. */
   refreshMarginMs: number
   requestTimeoutMs: number
+  /**
+   * Let the sync create CRM customers for customer bookings whose phone
+   * matches no non-archived customer. Off unless LAZUZ_AUTO_CREATE_CUSTOMERS=true
+   * (requires migration 20260930120000_lazuz_auto_created_customers).
+   */
+  autoCreateCustomers: boolean
 }
 
 const DEFAULT_BASE_URL = 'https://server.lazuz.co.il'
@@ -64,5 +70,6 @@ export function getLazuzConfig(): LazuzConfig {
     fallbackTokenTtlMs: positiveNumber('LAZUZ_TOKEN_TTL_SECONDS', 15 * 60) * 1000,
     refreshMarginMs: positiveNumber('LAZUZ_TOKEN_REFRESH_MARGIN_SECONDS', 90) * 1000,
     requestTimeoutMs: 15_000,
+    autoCreateCustomers: process.env.LAZUZ_AUTO_CREATE_CUSTOMERS?.trim().toLowerCase() === 'true',
   }
 }

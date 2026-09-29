@@ -43,13 +43,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const clubId = getLazuzConfig().clubId
+    const config = getLazuzConfig()
+    const clubId = config.clubId
     if (!clubId) {
       return json({ ok: false, error: { kind: 'not_configured', message: 'LAZUZ_CLUB_ID is not set' } }, 500)
     }
     const report = await runReservationsSync(
       { start, end },
-      { dryRun: dryRun !== false },
+      // Customer auto-creation is a server setting (LAZUZ_AUTO_CREATE_CUSTOMERS),
+      // never a request parameter. Dry runs report would_auto_create either way.
+      { dryRun: dryRun !== false, autoCreateCustomers: config.autoCreateCustomers },
       {
         store: createSupabaseSyncStore(),
         clubId,

@@ -39,7 +39,7 @@ const sameInstant = (a: string | null, b: string | null) =>
 /** Postgres `time` comes back as HH:MM:SS; LAZUZ may send HH:MM. */
 const normTime = (t: string) => (t.length === 5 ? `${t}:00` : t)
 
-const MATCHED: MatchStatus[] = ['matched_client_id', 'matched_phone', 'manual']
+const MATCHED: MatchStatus[] = ['matched_client_id', 'matched_phone', 'manual', 'auto_created']
 
 // ─── courts ───────────────────────────────────────────────────────────────
 
@@ -73,6 +73,14 @@ export type MatchContext = {
   identities: Map<string, string>
   /** E.164 phone → ids of non-archived customers with that phone */
   customersByPhone: Map<string, string[]>
+  /**
+   * Phones with zero matching customers that the sync auto-creates a customer
+   * for: phone → new customer id, or null when the customer would be created
+   * but isn't (dry run / auto-create disabled).
+   */
+  autoCreated?: Map<string, string | null>
+  /** Zero-match phones used by 2+ different LAZUZ clients: never auto-created. */
+  sharedPhones?: Set<string>
 }
 
 export type MatchResult = {
@@ -81,6 +89,8 @@ export type MatchResult = {
   phoneE164: string | null
   /** Identity to create after an unambiguous phone match. */
   newIdentity: IdentityInsert | null
+  /** Would link to an auto-created customer (dry run / auto-create disabled). */
+  wouldAutoCreate?: boolean
 }
 
 /**
@@ -89,8 +99,11 @@ export type MatchResult = {
  *   2. known LAZUZ client_id → its customer
  *   3. exactly one non-archived customer with the same E.164 phone → link
  *      (and remember the client_id for next time)
- *   4. several → ambiguous · none → unmatched
- * Never creates, edits or merges customers.
+ *   4. several → ambiguous
+ *   5. none → the customer auto-created for this phone (see
+ *      planCustomerCreations), or unmatched (no/invalid phone, phone shared
+ *      by several LAZUZ clients, or auto-create not performed)
+ * Never edits or merges customers.
  */
 export function matchCustomer(
   r: LazuzReservation,
@@ -134,9 +147,92 @@ export function matchCustomer(
       }
     }
     if (candidates.length > 1) return { customerId: null, status: 'ambiguous', phoneE164, newIdentity: null }
+
+    // Zero existing matches.
+    if (ctx.sharedPhones?.has(phoneE164)) return { customerId: null, status: 'ambiguous', phoneE164, newIdentity: null }
+    if (ctx.autoCreated?.has(phoneE164)) {
+      const created = ctx.autoCreated.get(phoneE164) ?? null
+      if (created) return { customerId: created, status: keep(created, 'auto_created'), phoneE164, newIdentity: null }
+      return { customerId: null, status: 'unmatched', phoneE164, newIdentity: null, wouldAutoCreate: true }
+    }
   }
 
   return { customerId: null, status: 'unmatched', phoneE164, newIdentity: null }
+}
+
+// ─── customer auto-creation ───────────────────────────────────────────────
+
+export type CustomerCreation = {
+  phone: string
+  full_name: string | null
+  email: string | null
+  /** LAZUZ client_id to link via customer_external_identities, if known. */
+  clientExternalId: string | null
+}
+
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
+/** Trimmed, single-spaced, ≤ 120 chars; empty → null (never ''). */
+export function cleanFullName(value: string | null | undefined): string | null {
+  const name = (value ?? '').replace(/\s+/g, ' ').trim().slice(0, 120).trim()
+  return name || null
+}
+
+/** Lowercased, trimmed, valid-looking email or null. */
+export function cleanEmail(value: string | null | undefined): string | null {
+  const email = (value ?? '').trim().toLowerCase()
+  return email && EMAIL.test(email) ? email : null
+}
+
+/**
+ * Which CRM customers the sync may create. A customer is planned for a phone
+ * only when ALL hold:
+ *   - an active (not cancelled) customer booking carries it
+ *   - it normalizes to a valid E.164 number (never email-only)
+ *   - the booking's LAZUZ client_id is not already linked, and the booking
+ *     isn't manually linked by the Owner
+ *   - ZERO non-archived CRM customers have that phone
+ *   - it belongs to at most one LAZUZ client in this batch (a phone shared by
+ *     several clients — e.g. a family — is left ambiguous, never merged)
+ * One customer per phone. Pure: the caller decides whether to actually insert.
+ */
+export function planCustomerCreations(
+  reservations: LazuzReservation[],
+  existingByExternalId: Map<string, ExistingReservation>,
+  ctx: Pick<MatchContext, 'identities' | 'customersByPhone'>
+): { creations: CustomerCreation[]; sharedPhones: Set<string> } {
+  const byPhone = new Map<string, { clients: Set<string>; names: string[]; emails: string[] }>()
+  for (const r of reservations) {
+    if (r.occupancyType !== 'customer_booking' || r.canceled === true) continue
+    if (existingByExternalId.get(r.externalId)?.match_status === 'manual') continue
+    if (r.clientExternalId && ctx.identities.has(r.clientExternalId)) continue
+    const phone = r.customerPhone ? normalizePhone(r.customerPhone) : null
+    if (!phone?.ok) continue
+    if ((ctx.customersByPhone.get(phone.e164)?.length ?? 0) > 0) continue
+    const entry = byPhone.get(phone.e164) ?? { clients: new Set<string>(), names: [], emails: [] }
+    if (r.clientExternalId) entry.clients.add(r.clientExternalId)
+    const name = cleanFullName(r.customerName) ?? cleanFullName(r.title)
+    if (name) entry.names.push(name)
+    const email = cleanEmail(r.customerEmail)
+    if (email) entry.emails.push(email)
+    byPhone.set(phone.e164, entry)
+  }
+
+  const creations: CustomerCreation[] = []
+  const sharedPhones = new Set<string>()
+  for (const [phone, entry] of byPhone) {
+    if (entry.clients.size > 1) {
+      sharedPhones.add(phone)
+      continue
+    }
+    creations.push({
+      phone,
+      full_name: entry.names[0] ?? null,
+      email: entry.emails[0] ?? null,
+      clientExternalId: [...entry.clients][0] ?? null,
+    })
+  }
+  return { creations, sharedPhones }
 }
 
 // ─── reservations ─────────────────────────────────────────────────────────
@@ -162,10 +258,13 @@ export function planReservations(input: ReservationPlanInput) {
     matched_client_id: 0,
     matched_phone: 0,
     manual: 0,
+    auto_created: 0,
     ambiguous: 0,
     unmatched: 0,
     not_applicable: 0,
   }
+  let wouldAutoCreate = 0
+  const wouldAutoCreateByPhone = new Map<string, number>()
   let created = 0
   let updated = 0
   let unknownCourt = 0
@@ -180,6 +279,10 @@ export function planReservations(input: ReservationPlanInput) {
     const existing = input.existingByExternalId.get(r.externalId)
     const m = matchCustomer(r, existing, input.match)
     matchCounts[m.status]++
+    if (m.wouldAutoCreate) {
+      wouldAutoCreate++
+      if (m.phoneE164) wouldAutoCreateByPhone.set(m.phoneE164, (wouldAutoCreateByPhone.get(m.phoneE164) ?? 0) + 1)
+    }
     if (m.newIdentity && !input.match.identities.has(m.newIdentity.external_id)) {
       identityByClient.set(m.newIdentity.external_id, m.newIdentity)
     }
@@ -255,6 +358,10 @@ export function planReservations(input: ReservationPlanInput) {
       missing: missingIds.length,
     },
     matchCounts,
+    /** Bookings that would link to an auto-created customer (dry run / disabled). */
+    wouldAutoCreate,
+    /** The same bookings per E.164 phone (dry-run preview only). */
+    wouldAutoCreateByPhone,
   }
 }
 

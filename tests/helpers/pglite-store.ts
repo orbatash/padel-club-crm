@@ -64,6 +64,16 @@ export function createPgliteSyncStore(db: PGlite, hooks: StoreHooks = {}): SyncS
     insertIdentities: async (items) => {
       await upsert('customer_external_identities', items, 'provider,external_id', null, true)
     },
+    insertCustomers: async (items) => {
+      if (!items.length) return []
+      return json<{ id: string; phone: string }>(
+        `insert into public.customers (full_name, phone, email, source, status)
+         select full_name, phone, email, source, status
+         from jsonb_to_recordset($1::jsonb) as x(full_name text, phone text, email text, source text, status text)
+         returning jsonb_build_object('id', id, 'phone', phone) j`,
+        [JSON.stringify(items)]
+      )
+    },
     loadOccupancies: (w) =>
       json(`select jsonb_build_object('id', id, 'reservation_id', reservation_id, 'starts_at', starts_at, 'ends_at', ends_at) j
             from court_occupancies where local_date between $1::date and $2::date`, [w.start, w.end]),

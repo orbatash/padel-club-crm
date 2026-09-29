@@ -154,6 +154,17 @@ export function createSupabaseSyncStore(db: Db = createAdminClient()): SyncStore
       }
     },
 
+    async insertCustomers(rows) {
+      const out: { id: string; phone: string }[] = []
+      for (const batch of chunks(rows, WRITE_CHUNK)) {
+        // Plain INSERT (never upsert): existing CRM customers are never touched.
+        const { data, error } = await db.from('customers').insert(batch).select('id, phone')
+        if (error) fail('insertCustomers', error)
+        for (const row of data) if (row.phone) out.push({ id: row.id, phone: row.phone })
+      }
+      return out
+    },
+
     async loadOccupancies(window) {
       const out: { id: string; reservation_id: string; starts_at: string; ends_at: string }[] = []
       for (let from = 0; ; from += PAGE) {

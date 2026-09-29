@@ -10,6 +10,8 @@ export type NavItem = {
   /** Two-key "go to" shortcut, e.g. G then T. */
   goKey?: string
   mobile?: boolean
+  /** Shorter label for the phone tab bar. */
+  mobileLabel?: string
 }
 
 export type NavGroup = { label: string; items: NavItem[] }
@@ -19,7 +21,7 @@ export const navGroups: NavGroup[] = [
     label: 'תפעול',
     items: [
       { label: 'היום', icon: I.IconToday, href: '/', goKey: 't', mobile: true },
-      { label: 'מגרשים והזמנות', icon: I.IconCourt },
+      { label: 'מגרשים והזמנות', icon: I.IconCourt, href: '/courts', goKey: 'c', mobile: true, mobileLabel: 'מגרשים' },
       { label: 'תיבת הודעות', icon: I.IconInbox },
       { label: 'לקוחות', icon: I.IconUsers, href: '/customers', goKey: 'u', mobile: true },
     ],

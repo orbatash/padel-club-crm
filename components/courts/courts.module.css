@@ -1,0 +1,735 @@
+/* Court schedule — Night Session (DESIGN_SYSTEM.md §6 borders, §11 tables, §15 widgets, §18 RTL).
+   Optic yellow is NOT used for bookings; only for keyboard focus (--focus). */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ───────── Toolbar ───────── */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.dayNav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.navBtn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  transition:
+    border-color var(--t-instant) linear,
+    color var(--t-instant) linear;
+}
+.navBtn:hover {
+  border-color: var(--line-strong);
+  color: var(--text-1);
+}
+
+.dayLabel {
+  display: flex;
+  flex-direction: column;
+  min-width: 118px;
+  padding-inline: 8px;
+  line-height: 18px;
+}
+.dayLabel strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.dayLabel span {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.dateInput {
+  height: 32px;
+  padding-inline: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font: 400 13px/20px var(--font-plex-mono), ui-monospace, monospace;
+  color-scheme: inherit;
+}
+.dateInput:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.todayLink {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 10px;
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.todayLink:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+.todayLinkActive {
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.pending {
+  opacity: 0.55;
+  transition: opacity var(--t-fast) var(--ease);
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-inline-start: auto;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.summary :global(.num) {
+  color: var(--text-1);
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+
+/* ───────── Notices ───────── */
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-inline-start-width: 2px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.noticeWarn {
+  border-inline-start-color: var(--warn);
+  background: var(--warn-soft);
+  color: var(--text-1);
+}
+.noticeInfo {
+  border-inline-start-color: var(--line-strong);
+  background: var(--surface-1);
+}
+
+/* ───────── Desktop board ───────── */
+
+.board {
+  --px: 1.1px; /* per minute */
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-1);
+  overflow-x: auto;
+}
+
+.boardGrid {
+  display: grid;
+  grid-template-columns: 56px repeat(var(--courts), minmax(104px, 1fr));
+  min-width: calc(56px + var(--courts) * 104px);
+}
+
+.corner,
+.courtHead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 44px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
+}
+.courtHead {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-inline: 10px;
+  border-inline-start: 1px solid var(--line-subtle);
+  line-height: 16px;
+}
+.courtName {
+  font-size: 13px;
+  font-weight: 600;
+}
+.courtMeta {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.axis {
+  position: relative;
+  height: calc((var(--range-end) - var(--range-start)) * var(--px));
+}
+.hourLabel {
+  position: absolute;
+  inset-inline-start: 0;
+  width: 100%;
+  padding-inline: 8px;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  font: 400 11px/14px var(--font-plex-mono), ui-monospace, monospace;
+  text-align: start;
+}
+
+.column {
+  position: relative;
+  container-type: inline-size;
+  height: calc((var(--range-end) - var(--range-start)) * var(--px));
+  border-inline-start: 1px solid var(--line-subtle);
+  /* Hour lines (solid) and half-hour lines (faint). */
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      var(--line-subtle) 0,
+      var(--line-subtle) 1px,
+      transparent 1px,
+      transparent calc(60 * var(--px))
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(30 * var(--px)),
+      color-mix(in srgb, var(--line-subtle) 50%, transparent) calc(30 * var(--px)),
+      color-mix(in srgb, var(--line-subtle) 50%, transparent) calc(30 * var(--px) + 1px),
+      transparent calc(30 * var(--px) + 1px),
+      transparent calc(60 * var(--px))
+    );
+}
+
+.nowLine {
+  position: absolute;
+  inset-inline: 0;
+  z-index: 2;
+  height: 0;
+  border-top: 1px solid var(--text-1);
+  pointer-events: none;
+}
+.hourLabelFirst {
+  transform: none;
+}
+.nowTag {
+  position: absolute;
+  z-index: 2;
+  inset-inline-start: 6px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--text-1);
+  color: var(--canvas);
+  font: 500 10px/14px var(--font-plex-mono), ui-monospace, monospace;
+}
+
+/* ───────── Blocks ───────── */
+
+.block {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  margin-inline: 2px;
+  padding: 3px 6px 3px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  border-inline-start-width: 2px;
+  color: var(--text-1);
+  font-size: 11px;
+  line-height: 14px;
+  transition: border-color var(--t-instant) linear;
+}
+a.block:hover {
+  border-color: var(--line-strong);
+}
+a.block:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+  z-index: 4;
+}
+
+.type_customer_booking {
+  background: var(--surface-3);
+  border-inline-start-color: var(--text-1);
+}
+.type_customer_booking.unmatched {
+  border-inline-start-color: var(--warn);
+}
+.type_internal_booking {
+  background: var(--surface-2);
+  border-inline-start-color: var(--info);
+}
+.type_blocked {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--surface-2) 0 6px,
+    transparent 6px 12px
+  );
+  border-color: var(--line-subtle);
+  border-inline-start-color: var(--line-strong);
+  color: var(--text-3);
+}
+.type_unknown {
+  background: var(--surface-1);
+  border-style: dashed;
+  color: var(--text-2);
+}
+
+.blockTime {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+.blockTime > :first-child {
+  flex: none;
+}
+/* In narrow columns the price gives way first; the time stays intact. */
+.blockPrice {
+  min-width: 0;
+  margin-inline-start: auto;
+  overflow: hidden;
+}
+.blockLabel {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.type_blocked .blockLabel {
+  font-weight: 400;
+}
+.blockTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  overflow: hidden;
+  max-height: 16px;
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  padding-inline: 4px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tag_warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.tag_live {
+  background: var(--live-soft);
+  color: var(--live);
+}
+.tag_neutral {
+  background: var(--surface-1);
+  color: var(--text-3);
+}
+
+/* Narrow columns: drop the price (still in the tooltip and on the mobile timeline). */
+@container (max-width: 130px) {
+  .blockPrice {
+    display: none;
+  }
+}
+/* Overlapping blocks share a column: start time only, no price. */
+.laned .blockPrice {
+  display: none;
+}
+
+/* Short blocks: one line only */
+.compact .blockTags,
+.compact .blockTime {
+  display: none;
+}
+.tiny {
+  padding-block: 0;
+}
+.tiny .blockLabel {
+  font-size: 10px;
+  line-height: 12px;
+}
+
+/* ───────── Mobile: one court at a time ───────── */
+
+.mobile {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .board {
+    display: none;
+  }
+  .mobile {
+    display: flex;
+    flex-direction: column;
+  }
+  /* Day navigation stays visible while scrolling the timeline. */
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    height: var(--m-toolbar-h);
+    margin-block: -12px 0;
+    padding-block: 8px;
+    background: var(--canvas);
+  }
+  .page {
+    --m-toolbar-h: 56px;
+  }
+  .navBtn,
+  .todayLink {
+    height: 40px;
+  }
+  .navBtn {
+    width: 40px;
+  }
+  .summary {
+    display: none;
+  }
+  .dayNav {
+    width: 100%;
+  }
+  .dayLabel {
+    flex: 1;
+    align-items: center;
+    text-align: center;
+  }
+  .dateInput {
+    display: none;
+  }
+}
+
+.mSwitcher {
+  position: sticky;
+  top: var(--m-toolbar-h);
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  margin-inline: -12px;
+  padding: 6px 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas);
+}
+.mSwitcher::-webkit-scrollbar {
+  display: none;
+}
+.mTab {
+  flex: none;
+  min-width: 84px;
+  height: 40px;
+  padding-inline: 16px;
+  text-align: center;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  scroll-snap-align: center;
+  transition:
+    background var(--t-instant) linear,
+    color var(--t-instant) linear,
+    border-color var(--t-instant) linear;
+}
+/* Selected: inverted fill + weight. Never Optic (that's for focus / AI). */
+.mTabActive {
+  border-color: var(--text-1);
+  background: var(--text-1);
+  color: var(--canvas);
+  font-weight: 600;
+}
+.mTab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.mDay {
+  display: flex;
+  flex-direction: column;
+  touch-action: pan-y;
+}
+
+.mHead {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-block: 22px 16px;
+}
+.mCourtName {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.mSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 20px;
+}
+.mSummary :global(.num) {
+  color: var(--text-1);
+  font-weight: 500;
+}
+.mDot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+
+.mList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Booking row: time range dominant → name → small tags → price. */
+.mRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 56px;
+  padding: 14px 14px 13px;
+  border: 1px solid var(--line-subtle);
+  border-inline-start: 3px solid var(--text-1);
+  border-radius: 4px;
+  background: var(--surface-1);
+  color: var(--text-1);
+}
+a.mRow:active {
+  background: var(--surface-2);
+}
+a.mRow:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.mRow_internal_booking {
+  border-inline-start-color: var(--info);
+}
+.mRow_blocked {
+  border-inline-start-color: var(--line-strong);
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, transparent 6px 12px);
+  color: var(--text-3);
+}
+.mRow_unknown {
+  border-style: dashed;
+  border-inline-start-style: solid;
+  border-inline-start-color: var(--text-3);
+}
+
+.mTime {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 18px/24px var(--font-plex-mono), ui-monospace, monospace;
+  letter-spacing: -0.01em;
+}
+.mTime + .mName {
+  margin-top: 3px;
+}
+.mRow_blocked .mTime {
+  color: var(--text-2);
+}
+.mName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+}
+.mNameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mRow_blocked .mName {
+  font-weight: 400;
+}
+.mGo {
+  flex: none;
+  margin-inline-start: auto;
+  color: var(--text-3);
+}
+.mTags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.mTags .tag {
+  height: 18px;
+  padding-inline: 6px;
+  font-size: 11px;
+}
+/* Match warnings: visible but quieter than time and name. */
+.mTags .mMatch {
+  height: 16px;
+  padding-inline: 5px;
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--warn) 80%, var(--text-2));
+  font-size: 10.5px;
+  font-weight: 400;
+}
+.mType {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 18px;
+}
+.mPrice {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* Free window: lighter than a booking, but unmistakable. */
+.mFree {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-block: 4px;
+  padding: 10px 14px;
+  border-inline-start: 2px dashed var(--line);
+  background: transparent;
+}
+.mFreeLabel {
+  color: color-mix(in srgb, var(--live) 75%, var(--text-3));
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.mFreeTime {
+  color: var(--text-3);
+  font: 400 14px/20px var(--font-plex-mono), ui-monospace, monospace;
+}
+.mFree.mCurrent {
+  box-shadow: none;
+  border-inline-start-color: var(--live);
+}
+
+/* Today */
+.mPast {
+  opacity: 0.45;
+}
+.mCurrent {
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.mNowTag {
+  padding-inline: 6px;
+  border-radius: 2px;
+  background: var(--live-soft);
+  color: var(--live);
+  font: 500 11px/18px var(--font-sans);
+  letter-spacing: 0;
+}
+.mNow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font: 500 11px/14px var(--font-plex-mono), ui-monospace, monospace;
+}
+.mNow::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--text-2);
+}
+
+.mEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 220px;
+  padding: 32px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+  text-align: center;
+}
+.mEmpty strong {
+  color: var(--live);
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 600;
+}
+.mEmpty span {
+  color: var(--text-3);
+  font: 400 13px/20px var(--font-plex-mono), ui-monospace, monospace;
+}
+
+/* ───────── Loading skeleton ───────── */
+
+.skel {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+:global([data-theme='light']) .skel {
+  background: var(--surface-3);
+}
+.skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--shimmer), transparent);
+  animation: courts-shimmer 1.6s var(--ease) infinite;
+}
+@keyframes courts-shimmer {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}

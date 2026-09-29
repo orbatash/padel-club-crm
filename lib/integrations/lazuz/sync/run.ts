@@ -6,7 +6,8 @@ import { logEvent } from '@/lib/integrations/core/log'
 import type { LazuzCourt } from '../courts'
 import type { ReservationsResult } from '../reservations'
 import { isWallDate } from '../time'
-import { planCourts, planOccupancies, planReservations, type MatchCounts } from './plan'
+import { planCourts, planCustomerCreations, planOccupancies, planReservations, type MatchCounts } from './plan'
+import { buildCustomerPreview, type CustomerPreview } from './preview'
 import type { SyncStore, SyncWindow } from './types'
 
 // LAZUZ → Supabase reservations sync (one explicit date window).
@@ -63,7 +64,17 @@ export type SyncReport = {
     missingDetection: 'applied' | 'disabled'
     missingDisabledReason: string | null
   }
-  matching: MatchCounts & { identitiesCreated: number }
+  /** Per-booking match outcome. would_auto_create: bookings that would link to an auto-created customer. */
+  matching: MatchCounts & { would_auto_create: number; identitiesCreated: number }
+  /** CRM customers created by this run (real run with auto-create enabled) or that would be. */
+  customers: {
+    autoCreated: number
+    wouldAutoCreate: number
+    sharedPhoneSkipped: number
+    autoCreateEnabled: boolean
+    /** Dry run only: masked sample (≤ 25) + counts of the customers that would be created. Never logged. */
+    preview?: CustomerPreview
+  }
   occupancies: { desired: number; created: number; changed: number; deleted: number }
   error: ReturnType<IntegrationError['toSafeJSON']> | null
   /**
@@ -116,11 +127,14 @@ function emptyReport(window: SyncWindow, dryRun: boolean): SyncReport {
       matched_client_id: 0,
       matched_phone: 0,
       manual: 0,
+      auto_created: 0,
       ambiguous: 0,
       unmatched: 0,
       not_applicable: 0,
+      would_auto_create: 0,
       identitiesCreated: 0,
     },
+    customers: { autoCreated: 0, wouldAutoCreate: 0, sharedPhoneSkipped: 0, autoCreateEnabled: false },
     occupancies: { desired: 0, created: 0, changed: 0, deleted: 0 },
     error: null,
     runRecord: { status: 'not_applicable', error: null },
@@ -129,7 +143,7 @@ function emptyReport(window: SyncWindow, dryRun: boolean): SyncReport {
 
 export async function runReservationsSync(
   window: SyncWindow,
-  options: { dryRun: boolean },
+  options: { dryRun: boolean; autoCreateCustomers?: boolean },
   deps: SyncDeps
 ): Promise<SyncReport> {
   validateWindow(window)
@@ -195,16 +209,45 @@ export async function runReservationsSync(
     const customers = await store.loadActiveCustomersByPhones(phones)
     const customersByPhone = new Map<string, string[]>()
     for (const c of customers) customersByPhone.set(c.phone, [...(customersByPhone.get(c.phone) ?? []), c.id])
+    const identityByClient = new Map(identities.map((i) => [i.external_id, i.customer_id]))
+    const existingByExternalId = new Map(existingRows.map((r) => [r.external_id, r]))
 
-    // 3. PLAN reservations
+    // 3a. CUSTOMERS — plan auto-creation (zero-match, valid phone, single LAZUZ
+    // client). Created only in a real run with auto-create enabled, and BEFORE
+    // any reservation is written so bookings can link to the new customers. If
+    // this step fails, the run fails and no reservation is written.
+    const autoCreateEnabled = options.autoCreateCustomers === true
+    report.customers.autoCreateEnabled = autoCreateEnabled
+    const { creations, sharedPhones } = planCustomerCreations(fetched.reservations, existingByExternalId, {
+      identities: identityByClient,
+      customersByPhone,
+    })
+    report.customers.sharedPhoneSkipped = sharedPhones.size
+    const autoCreated = new Map<string, string | null>()
+    if (!options.dryRun && autoCreateEnabled && creations.length) {
+      const inserted = await store.insertCustomers(
+        creations.map((c) => ({ full_name: c.full_name, phone: c.phone, email: c.email, source: 'lazuz', status: 'active' }))
+      )
+      for (const row of inserted) autoCreated.set(row.phone, row.id)
+      const autoIdentities = creations
+        .filter((c) => c.clientExternalId && autoCreated.get(c.phone))
+        .map((c) => ({ provider: 'lazuz' as const, external_id: c.clientExternalId!, customer_id: autoCreated.get(c.phone)!, matched_by: 'auto_created' as const }))
+      if (autoIdentities.length) await store.insertIdentities(autoIdentities)
+      report.customers.autoCreated = inserted.length
+    } else {
+      for (const c of creations) autoCreated.set(c.phone, null)
+      report.customers.wouldAutoCreate = creations.length
+    }
+
+    // 3b. PLAN reservations
     const plan = planReservations({
       window,
       reservations: fetched.reservations,
       parserSkipped: fetched.skipped,
       courtIdByExternal,
-      existingByExternalId: new Map(existingRows.map((r) => [r.external_id, r])),
+      existingByExternalId,
       presentOverlapping,
-      match: { identities: new Map(identities.map((i) => [i.external_id, i.customer_id])), customersByPhone },
+      match: { identities: identityByClient, customersByPhone, autoCreated, sharedPhones },
       now: nowIso,
     })
 
@@ -223,7 +266,12 @@ export async function runReservationsSync(
       missingDetection: plan.missingDisabledReason ? 'disabled' : 'applied',
       missingDisabledReason: plan.missingDisabledReason,
     }
-    report.matching = { ...plan.matchCounts, identitiesCreated: plan.identities.length }
+    if (options.dryRun) report.customers.preview = buildCustomerPreview(creations, plan.wouldAutoCreateByPhone)
+    report.matching = {
+      ...plan.matchCounts,
+      would_auto_create: plan.wouldAutoCreate,
+      identitiesCreated: plan.identities.length + report.customers.autoCreated,
+    }
 
     // 4. WRITE (order matters — see header)
     const reservationIdByExternal = new Map(existingRows.map((r) => [r.external_id, r.id]))
@@ -273,10 +321,18 @@ export async function runReservationsSync(
     reservations: report.reservations,
     occupancies: report.occupancies,
     matching: report.matching,
+    customers: withoutPreview(report.customers),
     error: report.error,
     runRecord: report.runRecord.status,
   })
   return report
+}
+
+/** The preview holds names and masked phones: response only, never logs. */
+function withoutPreview(customers: SyncReport['customers']) {
+  const logged = { ...customers }
+  delete logged.preview
+  return logged
 }
 
 /**

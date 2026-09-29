@@ -2,14 +2,17 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
 
-// In-memory Postgres with minimal Supabase stand-ins (roles, auth.uid/jwt,
-// customers, is_owner) plus the committed LAZUZ migration, so constraints and
-// triggers behave exactly as in production.
+// In-memory Postgres with minimal Supabase stand-ins (roles, auth schema) and
+// the committed migrations: the customers hardening migration (on a stand-in
+// of the original customers table) and the LAZUZ migrations — so constraints
+// and triggers behave exactly as in production.
 
-const LAZUZ_MIGRATION = readFileSync(
-  path.resolve(process.cwd(), 'supabase/migrations/20260929120000_lazuz_court_occupancy.sql'),
-  'utf8'
-)
+const migration = (name: string) => readFileSync(path.resolve(process.cwd(), 'supabase/migrations', name), 'utf8')
+const MIGRATIONS = [
+  '20260928120000_customers_hardening.sql',
+  '20260929120000_lazuz_court_occupancy.sql',
+  '20260930120000_lazuz_auto_created_customers.sql',
+].map(migration)
 
 export async function createTestDb(): Promise<PGlite> {
   const db = new PGlite()
@@ -18,19 +21,30 @@ export async function createTestDb(): Promise<PGlite> {
     create role authenticated nologin;
     create role service_role nologin bypassrls;
     create schema auth;
+    create table auth.users (id uuid primary key);
     create function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
     create function auth.jwt() returns jsonb language sql stable as $$ select '{}'::jsonb $$;
+    -- The customers table as originally created in the dashboard (pre-hardening).
     create table public.customers (
       id uuid primary key default gen_random_uuid(),
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
       full_name text,
       phone text,
       email text,
-      archived_at timestamptz
+      instagram_username text,
+      source text,
+      status text default 'new',
+      player_level text,
+      interests text[],
+      tags text[],
+      notes text,
+      last_conversation_summary text,
+      whatsapp_opt_in boolean default false,
+      marketing_opt_in boolean default false
     );
-    create function public.is_owner() returns boolean language sql stable security invoker set search_path = ''
-      as $$ select false $$;
   `)
-  await db.exec(LAZUZ_MIGRATION)
+  for (const sql of MIGRATIONS) await db.exec(sql)
   return db
 }
 
